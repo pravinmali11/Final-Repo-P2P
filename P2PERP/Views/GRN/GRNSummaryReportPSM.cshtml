@@ -696,30 +696,36 @@
                     extend: 'pdfHtml5',
                     text: '<i class="bi bi-file-earmark-pdf text-danger fs-5"></i>',
                     titleAttr: 'PDF',
-                    title: 'Total PO Items',
+                    title: 'GRN Summary Report',
                     orientation: 'landscape',
                     pageSize: 'A4',
                     exportOptions: {
-                        columns: [2, 3, 4, 5, 6, 7, 8],
+                        columns: [2, 3, 4, 5, 6, 7,8],
                         rows: function (idx, data, node) {
                             return $(node).find('input.rowCheckbox1').prop('checked');
                         },
                         format: {
                             body: function (data, rowIdx, colIdx, node) {
-                                return stripHtml(data);
+                                if (colIdx === 1) return rowIdx + 1; // Sr No
+                                return stripHtml(data); // Fixed: Use stripHtml function
                             }
                         }
                     },
                     action: function (e, dt, button, config) {
-                        var selected = $('#GRNItemsTablePSM tbody .rowCheckbox1:checked').length;
+                        var selected = $('.rowCheckbox1:checked').length;
                         var btnApi = dt.button(button);
+
+                        // ✅ If no rows selected
                         if (selected === 0) {
                             toastr.warning("Please select at least one row before exporting!");
-                            try { btnApi.processing(false); } catch (e) { }
+                            btnApi.processing(false);
                             return;
                         }
-                        try { btnApi.processing(true); } catch (err) { }
 
+                        // ✅ Start spinner
+                        btnApi.processing(true);
+
+                        // ✅ Patch pdfMake to stop spinner after download
                         if (window.pdfMake && pdfMake.createPdf && !pdfMake._patchedForDT) {
                             (function () {
                                 var origCreate = pdfMake.createPdf;
@@ -728,26 +734,96 @@
                                     var origDownload = pdfDoc.download;
                                     pdfDoc.download = function (filename, cb) {
                                         origDownload.call(pdfDoc, filename);
-                                        setTimeout(function () { try { btnApi.processing(false); } catch (e) { } }, 1000);
-                                        if (typeof cb === 'function') cb();
+                                        // Stop spinner after small delay
+                                        setTimeout(() => {
+                                            try { btnApi.processing(false); } catch (err) { }
+                                            if (typeof cb === 'function') cb();
+                                        }, 50);
                                     };
                                     return pdfDoc;
                                 };
                                 pdfMake._patchedForDT = true;
                             })();
                         }
-
-                        if (!$.fn.dataTable.ext.buttons.pdfHtml5._orig) {
-                            $.fn.dataTable.ext.buttons.pdfHtml5._orig = $.fn.dataTable.ext.buttons.pdfHtml5.action;
+                        // ✅ Ensure DataTables has the original action stored
+                        if (!$.fn.dataTable.ext.buttons.pdfHtml5.__originalAction) {
+                            $.fn.dataTable.ext.buttons.pdfHtml5.__originalAction =
+                                $.fn.dataTable.ext.buttons.pdfHtml5.action;
                         }
-                        $.fn.dataTable.ext.buttons.pdfHtml5._orig.call(this, e, dt, button, config);
 
-                        setTimeout(function () { try { btnApi.processing(false); } catch (err) { } }, 2000);
+                        // ✅ Call DataTables' built-in export
+                        $.fn.dataTable.ext.buttons.pdfHtml5.__originalAction.call(this, e, dt, button, config);
+
+                        // ✅ Safety stop if stuck
+                        setTimeout(() => { try { btnApi.processing(false); } catch (err) { } }, 3000);
                     },
+
                     customize: function (doc) {
+                        // ---------- PAGE SETTINGS ----------
                         doc.pageSize = 'A4';
                         doc.pageOrientation = 'landscape';
                         doc.defaultStyle.fontSize = 9;
+                        doc.defaultStyle.alignment = 'center';
+                        doc.styles.tableHeader.fontSize = 10;
+                        doc.styles.tableHeader.fillColor = '#343a40';
+                        doc.styles.tableHeader.color = 'white';
+                        doc.styles.tableHeader.bold = true;
+                        doc.styles.tableHeader.alignment = 'center';
+                        // ---------- GENERATED DATE ----------
+                        doc.content.splice(1, 0, {
+                            text: `Generated Date: ${moment().format("DD-MM-YYYY")}`,
+                            alignment: 'center',
+                            margin: [0, 0, 0, 12],
+                            fontSize: 9,
+                            italics: true
+                        });
+
+                        // ---------- FIND TABLE ----------
+                        function findTableNodeIndex(doc) {
+                            for (var i = 0; i < doc.content.length; i++) {
+                                if (doc.content[i].table) return i;
+                            }
+                            return -1;
+                        }
+
+                        var tableNodeIndex = findTableNodeIndex(doc);
+                        if (tableNodeIndex < 0) return;
+                        var tableNode = doc.content[tableNodeIndex];
+                        if (!tableNode || !tableNode.table || !tableNode.table.body) return;
+
+                        // ---------- ADD SR NO ----------
+                        var headerRow = tableNode.table.body[0];
+                        headerRow.unshift({ text: 'Sr No', style: 'tableHeader' });
+
+                        for (var r = 1; r < tableNode.table.body.length; r++) {
+                            var row = tableNode.table.body[r];
+                            row.unshift({ text: String(r), alignment: 'center' });
+                        }
+
+                        // ---------- SET COLUMN WIDTHS ----------
+                        tableNode.table.widths = ['5%', '12%', '15%', '15%', '10%', '10%', '9%', '9%'];
+
+                        // ---------- STYLE CELLS ----------
+                        for (var i = 1; i < tableNode.table.body.length; i++) {
+                            var row = tableNode.table.body[i];
+                            for (var j = 0; j < row.length; j++) {
+                                var cell = row[j];
+                                var txt = stripHtml(cell.text || cell);
+                                row[j] = { text: txt, fontSize: 8, margin: [2, 3, 2, 3], alignment: j === 3 ? 'left' : 'center' };
+                            }
+                        }
+
+                        // ---------- ADD BORDERS ----------
+                        tableNode.layout = {
+                            hLineWidth: () => 0.5,
+                            vLineWidth: () => 0.5,
+                            hLineColor: () => '#aaa',
+                            vLineColor: () => '#aaa',
+                            paddingLeft: () => 4,
+                            paddingRight: () => 4,
+                            paddingTop: () => 3,
+                            paddingBottom: () => 3
+                        };
                     }
                 },
                 //Excel

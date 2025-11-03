@@ -380,7 +380,7 @@ function initTable(fromDate, toDate, statusFilter = null) {
                     // Add status filter info if applied
                     if (selectedStatus) {
                         doc.content.splice(1, 0, {
-                            text: `Filtered by Status: ${selectedStatus}`,
+                            //text: `Filtered by Status: ${selectedStatus}`,
                             alignment: 'center',
                             margin: [0, 0, 0, 8],
                             fontSize: 10,
@@ -389,7 +389,7 @@ function initTable(fromDate, toDate, statusFilter = null) {
                     }
 
                     doc.content.splice(selectedStatus ? 2 : 1, 0, {
-                        text: `Generated on: ${moment().format("DD-MM-YYYY HH:mm")}`,
+                        text: `Generated Date: ${moment().format("DD/MM/YYYY")}`,
                         alignment: 'center',
                         margin: [0, 0, 0, 12],
                         fontSize: 9,
