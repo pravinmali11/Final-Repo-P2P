@@ -507,7 +507,7 @@
 
                         const stripHtml = html => $('<div>').html(html).text();
                         var tableNodeIndex = findTableNodeIndex(doc);
-                        if (tableNodeIndex < 0) return;
+                        if (tableNodeIndex < 0) return;  
                         var tableNode = doc.content[tableNodeIndex];
                         if (!tableNode || !tableNode.table || !tableNode.table.body) return;
 
